@@ -13,9 +13,13 @@ const watch = process.argv.includes('--watch');
 
 /** @type {import('esbuild').BuildOptions} */
 const options = {
-	entryPoints: ['src/content/content-main.js'],
+	entryPoints: [
+		'src/content/content-main.js',
+		'src/popup/popup.js',
+	],
+	outdir: 'dist',
+	entryNames: '[name]',
 	bundle: true,
-	outfile: 'dist/content-main.js',
 	format: 'iife',
 	target: 'chrome120',
 	minify: false,

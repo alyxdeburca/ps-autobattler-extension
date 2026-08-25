@@ -34,12 +34,23 @@ run('npm run build');
 
 // 2. Stage only what manifest.json references.
 fs.rmSync(out, { recursive: true, force: true });
-for (const rel of ['manifest.json', 'dist', 'src/content/overlay.css']) {
-	const src = path.join(root, rel);
-	const dest = path.join(out, rel);
+for (const [srcRel, destRel] of [
+	['manifest.json', 'manifest.json'],
+	['dist', 'dist'],
+	['src/popup', 'popup'],
+]) {
+	const src = path.join(root, srcRel);
+	const dest = path.join(out, destRel);
 	fs.mkdirSync(path.dirname(dest), { recursive: true });
 	if (fs.statSync(src).isDirectory()) {
 		fs.cpSync(src, dest, { recursive: true });
+		// popup scripts are bundled by esbuild into dist/; the page loads them
+		// via ../dist/. Don't ship raw copies alongside the sources.
+		if (destRel === 'popup') {
+			for (const f of fs.readdirSync(dest)) {
+				if (f.endsWith('.js')) fs.rmSync(path.join(dest, f));
+			}
+		}
 	} else {
 		fs.cpSync(src, dest);
 	}
@@ -48,6 +59,9 @@ for (const rel of ['manifest.json', 'dist', 'src/content/overlay.css']) {
 // 3. Sanity: every file the manifest mentions must exist in the stage.
 const manifest = JSON.parse(fs.readFileSync(path.join(out, 'manifest.json'), 'utf8'));
 const referenced = [];
+if (manifest.action && manifest.action.default_popup) {
+	referenced.push(manifest.action.default_popup);
+}
 for (const cs of manifest.content_scripts || []) {
 	for (const f of [...(cs.js || []), ...(cs.css || [])]) referenced.push(f);
 }

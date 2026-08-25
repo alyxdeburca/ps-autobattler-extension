@@ -1,0 +1,30 @@
+body {
+  width: 280px;
+  margin: 0;
+  padding: 12px;
+  background: #17191d;
+  color: #e8eaed;
+  font: 13px/1.5 system-ui, sans-serif;
+}
+.head { display: flex; align-items: baseline; justify-content: space-between; }
+.title { font-weight: 700; letter-spacing: .2px; }
+.ver { font-size: 11px; color: #6b7078; }
+.state { margin-top: 10px; color: #9aa0a6; }
+.advice { margin-top: 10px; }
+.subhead {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .8px;
+  color: #9aa0a6; display: flex; justify-content: space-between;
+}
+.turn { text-transform: none; letter-spacing: 0; }
+.list { margin: 6px 0 0; padding-left: 18px; }
+.list li { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
+.list .best { color: #8ab4f8; font-weight: 700; }
+.auto-row {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 12px; color: #dadce0; user-select: none;
+}
+.foot {
+  margin-top: 12px; padding-top: 8px;
+  border-top: 1px solid #3c4048;
+  font-size: 10.5px; color: #6b7078;
+}

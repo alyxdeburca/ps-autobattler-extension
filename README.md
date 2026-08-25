@@ -11,14 +11,16 @@ core that wins ~69% headless vs. random AI.
 
 ## Features
 
-- **Live suggestion panel** — every turn, ranks your legal moves by expected
-  damage (type chart incl. immunities, STAB, burn, accuracy) plus status /
-  setup / switch scoring; shows estimated dmg % per move.
+- **Toolbar-popup advisor** — click the extension icon on a battle tab to see
+  your legal moves ranked by expected damage (type chart incl. immunities,
+  STAB, burn, accuracy) plus status / setup / switch scoring, with estimated
+  dmg % per move. No persistent in-page UI.
 - **Switch analysis** — bench options scored by matchup (defensive typing vs
   foe + offensive potential), so pivots are suggested when they're genuinely
   better.
-- **Autoplay (opt-in)** — checkbox makes the bot click the real UI buttons
-  for the top choice each turn. Off by default.
+- **Autoplay (opt-in)** — tick the box inside the popup and the bot clicks the
+  real UI buttons for the top choice each turn. Off by default; the popup
+  stays open while it plays.
 - **Fair play by construction** — reads only what any client sees; no engine
   simulation of hidden information, no server modification.
 
@@ -29,10 +31,13 @@ play.pokemonshowdown.com tab
 ├── MAIN world:      src/inject/inject-bridge.js   (copied to dist/)
 │     • exposes battle.request JSON + foe view from the client's own objects
 │     • relays UI-click commands (autoplay)
-└── ISOLATED world:  dist/content-main.js          (esbuild bundle)
-      • vendor/ps-autobattler/src/decision-core.js  ← submodule brain
-      • src/data/minidex.js + minidex.json          ← compact game data
-      • renders #psab-panel overlay; polls bridge at 700ms
+├── ISOLATED world:  dist/content-main.js          (esbuild bundle)
+│     • vendor/ps-autobattler/src/decision-core.js  ← submodule brain
+│     • src/data/minidex.js + minidex.json          ← compact game data
+│     • silent decision loop; answers chrome.runtime messages
+└── toolbar popup:   popup/popup.html + dist/popup.js
+      • shown only when you click the extension icon
+      • queries the active tab for ranked suggestions & autoplay toggle
 ```
 
 Why not bundle the whole simulator? Battles aren't simulated here — the real
@@ -55,7 +60,8 @@ Then in Chrome:
 
 1. Open `chrome://extensions`, enable **Developer mode**
 2. **Load unpacked** → select this folder
-3. Open any battle on play.pokemonshowdown.com — the panel appears top-right
+3. Open any battle on play.pokemonshowdown.com, then click the extension
+   icon to see ranked suggestions
 
 ## Regenerating game data
 
