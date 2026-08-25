@@ -8,44 +8,51 @@
 'use strict';
 
 const STYLES = `
-#psab-tab {
-  position: fixed; top: 10px; right: 10px; z-index: 99998;
+/* Calcdex-style docked tab: chip header + attached panel body */
+#psab-shell {
+  position: fixed; top: 42px; right: 10px; z-index: 99998;
   width: 235px; font: 12px/1.45 system-ui, sans-serif;
-  color: #e8eaed; background: rgba(28,30,34,.96);
-  border: 1px solid #55595f; border-radius: 8px;
-  box-shadow: 0 4px 14px rgba(0,0,0,.4);
-  user-select: none;
+  color: #e8eaed;
 }
-#psab-tab .psab-head {
+#psab-shell .psab-tabchip {
   display: flex; align-items: center; gap: 6px;
-  padding: 7px 10px; cursor: pointer;
+  width: fit-content; padding: 4px 12px;
+  background: rgba(36,40,46,.97);
+  border: 1px solid #55595f; border-bottom: none;
+  border-radius: 8px 8px 0 0;
   font-weight: 700; letter-spacing: .2px;
+  cursor: pointer; user-select: none;
 }
-#psab-tab .psab-dot {
+#psab-shell .psab-tabchip:hover { background: rgba(48,53,60,.97); }
+#psab-shell .psab-dot {
   width: 8px; height: 8px; border-radius: 50%;
   background: #777; flex: none;
 }
-#psab-tab .psab-dot.ready  { background: #57d16a; }
-#psab-tab .psab-dot.waiting{ background: #e5b567; }
-#psab-tab .psab-dot.nobattle,{ background: #777; }
-#psab-tab .psab-dot.error  { background: #e5534b; }
-#psab-tab .psab-chevron { margin-left: auto; color: #9aa0a6; font-size: 10px; }
-#psab-tab .psab-body {
-  padding: 4px 10px 9px; border-top: 1px solid #3c4048;
+#psab-shell .psab-dot.ready   { background: #57d16a; }
+#psab-shell .psab-dot.waiting { background: #e5b567; }
+#psab-shell .psab-dot.nobattle{ background: #777; }
+#psab-shell .psab-dot.error   { background: #e5534b; }
+#psab-shell .psab-chevron { margin-left: auto; color: #9aa0a6; font-size: 10px; }
+#psab-shell .psab-body {
+  background: rgba(28,30,34,.96);
+  border: 1px solid #55595f; border-radius: 0 8px 8px 8px;
+  box-shadow: 0 4px 14px rgba(0,0,0,.4);
+  padding: 6px 10px 9px; user-select: none;
 }
-#psab-tab .psab-note { color: #9aa0a6; padding: 4px 0; }
-#psab-tab ol { margin: 4px 0 0; padding-left: 16px; }
-#psab-tab li { margin: 3px 0; }
-#psab-tab li.best { color: #8ab4f8; font-weight: 700; }
-#psab-tab .bar {
+#psab-shell.collapsed .psab-body { display: none; }
+#psab-shell .psab-note { color: #9aa0a6; padding: 2px 0; }
+#psab-shell ol { margin: 4px 0 0; padding-left: 16px; }
+#psab-shell li { margin: 3px 0; }
+#psab-shell li.best { color: #8ab4f8; font-weight: 700; }
+#psab-shell .bar {
   height: 3px; background: #33363c; border-radius: 2px;
   margin-top: 2px; overflow: hidden;
 }
-#psab-tab .bar i {
+#psab-shell .bar i {
   display: block; height: 100%; background: #8ab4f8; border-radius: 2px;
 }
-#psab-tab li.best .bar i { background: #aecbfa; }
-#psab-tab .auto-row {
+#psab-shell li.best .bar i { background: #aecbfa; }
+#psab-shell .auto-row {
   display: flex; align-items: center; gap: 6px;
   margin-top: 7px; padding-top: 6px;
   border-top: 1px solid #3c4048; color: #dadce0;
@@ -62,18 +69,19 @@ function pctBar(dmg) {
  * @param {(v:boolean)=>void} setAuto
  */
 function mount(setAuto) {
-	if (document.getElementById('psab-tab')) return () => {};
+	if (document.getElementById('psab-shell')) return () => {};
 
 	const style = document.createElement('style');
 	style.textContent = STYLES;
 	document.documentElement.appendChild(style);
 
-	const root = document.createElement('div');
-	root.id = 'psab-tab';
-	root.innerHTML = `
-	  <div class="psab-head">
+	// Calcdex-style: tab chip on top, panel docked beneath it.
+	const shell = document.createElement('div');
+	shell.id = 'psab-shell';
+	shell.innerHTML = `
+	  <div class="psab-tabchip">
 	    <span class="psab-dot"></span>
-	    <span>PS Auto-Battler</span>
+	    <span>Calcdex-ish</span>
 	    <span class="psab-chevron">▼</span>
 	  </div>
 	  <div class="psab-body">
@@ -83,25 +91,25 @@ function mount(setAuto) {
 	      <input type="checkbox" class="psab-auto"> autoplay
 	    </label>
 	  </div>`;
-	document.documentElement.appendChild(root);
+	document.documentElement.appendChild(shell);
 
-	const head = root.querySelector('.psab-head');
-	const body = root.querySelector('.psab-body');
-	const dotEl = root.querySelector('.psab-dot');
-	const chev = root.querySelector('.psab-chevron');
-	const noteEl = root.querySelector('.psab-note');
-	const listEl = root.querySelector('ol');
-	const autoEl = root.querySelector('.psab-auto');
+	const chip = shell.querySelector('.psab-tabchip');
+	const body = shell.querySelector('.psab-body');
+	const dotEl = shell.querySelector('.psab-dot');
+	const chev = shell.querySelector('.psab-chevron');
+	const noteEl = shell.querySelector('.psab-note');
+	const listEl = shell.querySelector('ol');
+	const autoEl = shell.querySelector('.psab-auto');
 
 	// restore collapse state
 	let collapsed = false;
 	try { collapsed = localStorage.getItem('psab-collapsed') === '1'; } catch (e) {}
 	function applyCollapse() {
-		body.style.display = collapsed ? 'none' : '';
+		shell.classList.toggle('collapsed', collapsed);
 		chev.textContent = collapsed ? '▸' : '▼';
 	}
 	applyCollapse();
-	head.addEventListener('click', () => {
+	chip.addEventListener('click', () => {
 		collapsed = !collapsed;
 		try { localStorage.setItem('psab-collapsed', collapsed ? '1' : '0'); } catch (e) {}
 		applyCollapse();

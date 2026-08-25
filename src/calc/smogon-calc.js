@@ -36,6 +36,10 @@ function makePokemon(speciesId, level, opts = {}) {
 		...(opts.item ? { item: opts.item } : {}),
 		...(opts.ability ? { ability: opts.ability } : {}),
 		...(opts.status ? { status: opts.status } : {}),
+		// @smogon/calc spells it: teraType + terastallized:true
+		...(opts.teraType
+			? { teraType: opts.teraType, terastallized: true }
+			: {}),
 	});
 	return p;
 }
@@ -55,6 +59,7 @@ function expectedDamagePct({ attacker, defender, move, attackerStats, defenderSp
 			status: attacker && attacker.status,
 			item: attacker && attacker.item,
 			ability: attacker && attacker.ability,
+			teraType: attacker && attacker.willTera ? attacker.teraType : '',
 		});
 
 	// Exact own-team stats straight from the client request.
