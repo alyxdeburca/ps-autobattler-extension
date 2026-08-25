@@ -23,17 +23,31 @@ async function activeTab() {
 
 function render(status) {
 	if (!status) {
-		stateEl.textContent = 'no battle brain on this tab';
+		stateEl.textContent = 'no battle brain on this tab — open a Showdown battle';
 		adviceEl.hidden = true;
 		autoEl.parentElement.style.display = 'none';
 		return;
 	}
 	autoEl.checked = !!status.auto;
-	if (!status.ok) {
-		stateEl.textContent = status.reason || 'waiting for a decision…';
+	if (status.state === 'nobattle') {
+		stateEl.textContent = status.reason || 'no active battle on this tab';
+		adviceEl.hidden = true;
+		autoEl.parentElement.style.display = 'none';
+		return;
+	}
+	if (status.state === 'waiting' || status.state === 'starting') {
+		stateEl.textContent = status.reason ||
+			'battle found · waiting for your decision point';
+		adviceEl.hidden = true;
+		autoEl.parentElement.style.display = '';
+		return;
+	}
+	if (status.state === 'error') {
+		stateEl.textContent = status.reason || 'error';
 		adviceEl.hidden = true;
 		return;
 	}
+	// state === 'ready'
 	stateEl.textContent = `active · best: ${bestLabel(status.best, status.choice)}`;
 	adviceEl.hidden = false;
 	turnEl.textContent = `· turn ${status.turn}`;

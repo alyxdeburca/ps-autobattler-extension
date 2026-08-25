@@ -1,9 +1,9 @@
 /**
  * content-main.js -- isolated world content script (headless brain).
  *
- * No visible UI. Runs the decision loop against snapshots from the
- * MAIN-world bridge and exposes results over chrome.runtime messaging so
- * the browser-action popup can display them when opened.
+ * Talks to the MAIN-world bridge via window.postMessage (JSON payloads;
+ * objects don't survive cross-world CustomEvent.detail reliably).
+ * Exposes status over chrome.runtime messaging for the toolbar popup.
  */
 'use strict';
 
@@ -12,28 +12,44 @@ const trackerMod = require('../../vendor/ps-autobattler/src/battle-state');
 const { BattleTracker } = trackerMod;
 
 // ---------------------------------------------------------------------------
-// Bridge communication (DOM CustomEvents to MAIN world)
+// Bridge communication (postMessage to MAIN world)
 // ---------------------------------------------------------------------------
-let pendingResolvers = [];
-function requestSnapshot() {
-	return new Promise(resolve => {
-		pendingResolvers.push(resolve);
-		document.dispatchEvent(new CustomEvent('psab-command', {
-			detail: { type: 'getSnapshot' },
-		}));
-		setTimeout(() => {
-			const idx = pendingResolvers.indexOf(resolve);
-			if (idx >= 0) { pendingResolvers.splice(idx, 1); resolve(null); }
-		}, 500);
-	});
-}
-document.addEventListener('psab-snapshot', ev => {
-	const resolve = pendingResolvers.shift();
-	if (resolve) resolve(ev.detail || null);
+const SRC_CONTENT = 'psab-content';
+let msgReqId = 0;
+const pending = new Map(); // reqId -> resolve
+
+window.addEventListener('message', ev => {
+	if (ev.source !== window) return;
+	const msg = ev.data;
+	if (!msg || msg.source !== 'psab-page') return;
+	if (msg.type === 'snapshot' && pending.has(msg.reqId)) {
+		const resolve = pending.get(msg.reqId);
+		pending.delete(msg.reqId);
+		try {
+			resolve(JSON.parse(msg.payload));
+		} catch (e) {
+			resolve({ connected: false, reason: 'bad snapshot payload' });
+		}
+	}
 });
 
+function requestSnapshot(timeoutMs = 800) {
+	return new Promise(resolve => {
+		const reqId = ++msgReqId;
+		pending.set(reqId, resolve);
+		window.postMessage({ source: SRC_CONTENT, type: 'getSnapshot', reqId },
+			window.location.origin);
+		setTimeout(() => {
+			if (pending.has(reqId)) {
+				pending.delete(reqId);
+				resolve(null); // bridge absent entirely
+			}
+		}, timeoutMs);
+	});
+}
+
 function sendCommand(detail) {
-	document.dispatchEvent(new CustomEvent('psab-command', { detail }));
+	window.postMessage({ source: SRC_CONTENT, ...detail }, window.location.origin);
 }
 
 // ---------------------------------------------------------------------------
@@ -44,11 +60,9 @@ let lastRequestHash = '';
 let auto = false;
 let loopBusy = false;
 
-// Status consumed by the popup.
 const status = {
-	ok: false,            // a decision is available
-	reason: 'starting…',  // human-readable state when !ok
-	battleUrl: location.href,
+	state: 'starting',    // starting | nobattle | waiting | ready | error
+	reason: 'starting…',
 	turn: 0,
 	choice: '',
 	candidates: [],
@@ -76,7 +90,6 @@ async function decideOnce(snap) {
 	tracker.turn = snap.turn;
 
 	const req = snap.request;
-	if (req.wait) return { choice: '', candidates: [] };
 	if (req.teamPreview) return { choice: 'default', candidates: [] };
 	if (req.forceSwitch) {
 		const choice = core.decideForceSwitch(tracker, req);
@@ -99,24 +112,36 @@ setInterval(async () => {
 	try {
 		const snap = await requestSnapshot();
 		if (!snap) {
-			status.ok = false;
+			status.state = 'nobattle';
 			status.reason = 'no active battle on this tab';
 			return;
 		}
+		if (!snap.connected) {
+			status.state = 'nobattle';
+			status.reason = snap.reason || 'no active battle on this tab';
+			return;
+		}
 		status.turn = snap.turn;
+		if (!snap.hasRequest || !snap.request) {
+			status.state = 'waiting';
+			status.reason = `battle found · turn ${snap.turn} · waiting for your decision point`;
+			return;
+		}
 		const h = hashRequest(snap.request);
 		if (h !== lastRequestHash) {
 			lastRequestHash = h;
 			const { choice, candidates, best } = await decideOnce(snap);
 			Object.assign(status, {
-				ok: true, choice, candidates, best,
+				state: 'ready', reason: '', choice, candidates, best,
 				auto, updatedAt: Date.now(),
 			});
 			if (auto && choice && choice !== 'default') await act(choice);
 			else if (auto && choice === 'default') sendCommand({ type: 'chooseMove', slot: 1 });
+		} else {
+			status.state = 'ready';
 		}
 	} catch (e) {
-		status.ok = false;
+		status.state = 'error';
 		status.reason = `error: ${e.message}`;
 	} finally {
 		loopBusy = false;
@@ -136,7 +161,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 		status.auto = auto;
 		sendResponse(status);
 	}
-	// synchronous responses only; no `return true` needed
 });
 
-console.info('[PSAB] headless brain ready');
+console.info('[PSAB] headless brain ready (postMessage)');
