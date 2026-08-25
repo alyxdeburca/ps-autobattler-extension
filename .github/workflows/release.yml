@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test decision pipeline
+        run: npm test
+
+      - name: Verify tag matches manifest version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          MANIFEST_VERSION="$(node -p "require('./manifest.json').version")"
+          if [ "$TAG_VERSION" != "$MANIFEST_VERSION" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} (version ${TAG_VERSION}) does not match manifest.json version ${MANIFEST_VERSION}"
+            exit 1
+          fi
+          echo "Releasing version ${MANIFEST_VERSION}"
+
+      - name: Build & stage extension
+        run: node tools/package.js --out dist-package
+
+      - name: Zip staged extension
+        run: |
+          cd dist-package
+          zip -r "../ps-autobattler-extension-${GITHUB_REF_NAME}.zip" .
+          cd ..
+          unzip -l "ps-autobattler-extension-${GITHUB_REF_NAME}.zip"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ps-autobattler-extension-*.zip
+          generate_release_notes: true
+          fail_on_unmatched_files: true
