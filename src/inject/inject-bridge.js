@@ -70,15 +70,19 @@
 		// Pokemon objects live in it -- reading the Side itself yields player
 		// metadata (which produced ghost foes / zero damage before).
 		let foeView = [];
+		let foeSource = 'none';
 		try {
 			const side = battle.foe;
 			const actives = side && Array.isArray(side.active) ? side.active : [];
 			for (const mon of actives) {
 				if (!mon) continue;
+				const species = String(mon.speciesForme || mon.species || '')
+					.replace(/[^a-zA-Z0-9]/g, '');
+				if (!species) continue;
+				foeSource = 'side.active';
 				foeView.push({
 					name: mon.name || '',
-					species: String(mon.speciesForme || mon.species || '')
-						.replace(/[^a-zA-Z0-9]/g, ''),
+					species,
 					level: mon.level || 100,
 					types: (mon.getTypes && mon.getTypes()) || [],
 					hpRatio: mon.maxhp ? (mon.hp || 0) / mon.maxhp : 1,
@@ -91,6 +95,35 @@
 				});
 			}
 		} catch (e) { /* best-effort */ }
+
+		// FALLBACK: some client states leave side.active empty at request
+		// time -- recover species identity from the client's own protocol log
+		// (battle.log holds the raw lines; scan backwards for the last foe
+		// switch-in). Blind play is what produced the status-spam epidemic.
+		if (!foeView.length && Array.isArray(battle.log)) {
+			try {
+				for (let i = battle.log.length - 1; i >= 0; i--) {
+					const m = /\|switch\|p2[a-z]?:[^|]+\|([A-Za-z0-9-]+)/
+						.exec(battle.log[i]);
+					if (m && m[1]) {
+						foeSource = 'battle.log';
+						foeView.push({
+							name: m[1],
+							species: m[1].replace(/[^a-zA-Z0-9]/g, ''),
+							level: 80,
+							types: [],
+							hpRatio: 1,
+							status: '',
+							moves: [],
+							item: '', ability: '',
+							terastallized: false,
+							boosts: {},
+						});
+						break;
+					}
+				}
+			} catch (e) { /* best-effort */ }
+		}
 
 		// ---- our side: prefer the REQUEST's exact ServerPokemon[] -------------
 		let myPokemon = [];
