@@ -61,12 +61,34 @@ for (const type of dex.types.all()) {
 	typeChart[type.name] = { damageTaken: type.damageTaken };
 }
 
+// ---- random-battle movesets (exact global sets, not guesses) --------------
+let randomSets = {};
+try {
+	randomSets = JSON.parse(fs.readFileSync(
+		path.join(__dirname, '../../pokemon-showdown/data/random-battles/gen9/sets.json'),
+		'utf8'));
+} catch (e) {
+	console.error('warn: random-battle sets unavailable:', e.message);
+}
+
+// Union of every role's movepool per species -- the full set of moves a
+// random-battle foe of that species could possibly carry.
+const randomMoves = {};
+for (const [spId, entry] of Object.entries(randomSets)) {
+	const pool = new Set();
+	for (const set of entry.sets || []) {
+		for (const mv of set.movepool || []) pool.add(mv);
+	}
+	if (pool.size) randomMoves[spId] = [...pool];
+}
+
 const out = {
 	format: formatid,
 	generatedAt: new Date().toISOString(),
 	species,
 	moves,
 	typeChart,
+	randomMoves,
 };
 
 const dest = path.join(__dirname, '..', 'src', 'data', 'minidex.json');
