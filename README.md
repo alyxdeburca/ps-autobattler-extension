@@ -29,8 +29,8 @@ core that wins ~69% headless vs. random AI.
 ```
 play.pokemonshowdown.com tab
 ├── MAIN world:      src/inject/inject-bridge.js   (copied to dist/)
-│     • exposes battle.request JSON + foe view from the client's own objects
-│     • relays UI-click commands (autoplay)
+│     • exposes room.request JSON + foe view from the client's own objects
+│     • autoplay sends "/choose ..." via the room's own sendDirect()
 ├── ISOLATED world:  dist/content-main.js          (esbuild bundle)
 │     • vendor/ps-autobattler/src/decision-core.js  ← submodule brain
 │     • src/data/minidex.js + minidex.json          ← compact game data

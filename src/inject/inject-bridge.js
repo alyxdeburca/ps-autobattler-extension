@@ -1,47 +1,43 @@
 /**
  * inject-bridge.js -- runs in the MAIN world on play.pokemonshowdown.com.
  *
- * Exposes the live client battle state to the isolated-world content script
- * via window.postMessage (JSON strings -- objects do NOT survive cross-world
- * CustomEvent.detail reliably). Read-only observation except explicit UI
- * click commands used by opt-in autoplay.
+ * Verified against the client source (pokemon-showdown-client):
+ *   - live request lives on the ROOM object:  room.request  (BattleRequest,
+ *     with .requestType 'move'|'switch'|'team'|'wait' and .side.pokemon as
+ *     exact ServerPokemon[])
+ *   - choices are sent via the room's own connection:
+ *         room.sendDirect("/choose " + choices.toString())
+ *   - foe public state: battle.foe.active (+ .moveTrack revealed moves)
+ *   - exact own team also mirrored at battle.myPokemon
  */
 'use strict';
 
 (function () {
-	if (window.__PS_AUTOBATTLER_BRIDGE__) return;
-	const BRIDGE = { version: 2 };
-	window.__PS_AUTOBATTLER_BRIDGE__ = BRIDGE;
+	if (window.__PS_AUTOBATTLER_BRIDGE__ === 3) return;
+	const BRIDGE = { version: 3 };
+	window.__PS_AUTOBATTLER_BRIDGE__ = 3;
+	window.__PS_AUTOBATTLER_API__ = BRIDGE;
 
 	const SRC_PAGE = 'psab-page';
 	const SRC_CONTENT = 'psab-content';
 
-	// ---- Dex backend (page's own Dex, for decision-core) -------------------
-	BRIDGE.ensureDex = function () {
-		// dex-shim reads window.__PS_DEX_BACKEND__ inside THIS world; nothing
-		// needed here unless we later run decisions in-page too.
-		return !!(window.Dex || window.BattleDex);
-	};
-
-	// ---- locate the active battle object -----------------------------------
-	function findBattle() {
+	// ---- locate the active battle ROOM --------------------------------------
+	function findBattleRoom() {
 		try {
 			const registries = [];
-			if (window.app && window.app.rooms) registries.push(window.app.rooms);
 			if (window.PS && PS.rooms) registries.push(PS.rooms);
+			if (window.app && app.rooms) registries.push(app.rooms);
 			for (const rooms of registries) {
-				// Prefer the focused room, then any battle room.
-				const ids = Object.keys(rooms);
-				ids.sort((a, b) => (
-					(a.startsWith('battle-') ? 0 : 1) - (b.startsWith('battle-') ? 0 : 1)));
+				const ids = Object.keys(rooms).filter(id => id.startsWith('battle-'));
+				// most recently active battle first
+				ids.sort((a, b) => {
+					const ra = rooms[a], rb = rooms[b];
+					return (rb && rb.battle && rb.battle.turn || 0) -
+					       (ra && ra.battle && ra.battle.turn || 0);
+				});
 				for (const id of ids) {
 					const room = rooms[id];
-					const battle = room && room.battle;
-					// A battle counts as soon as the object exists -- requests
-					// come and go between turns; absence != absence of battle.
-					if (battle && (battle.mySide || battle.sides || battle.request)) {
-						return battle;
-					}
+					if (room && room.battle) return room;
 				}
 			}
 		} catch (e) { /* client not ready */ }
@@ -58,48 +54,46 @@
 		}
 	}
 
-	// ---- snapshot builder ----------------------------------------------------
+	// ---- snapshot -------------------------------------------------------------
 	BRIDGE.getSnapshot = function () {
-		const battle = findBattle();
-		if (!battle) {
-			return { connected: false, reason: 'no battle room found' };
-		}
+		const room = findBattleRoom();
+		if (!room) return { connected: false, reason: 'no battle room found' };
+		const battle = room.battle;
 
-		let request = battle.request || null;
+		let request = room.request || null;
 		if (typeof request === 'string') {
 			try { request = JSON.parse(request); } catch (e) { request = null; }
 		}
-		// Some client versions stash the latest request elsewhere.
-		if (!request && typeof battle.getRequest === 'function') {
-			try { request = battle.getRequest() || null; } catch (e) { /* ignore */ }
-		}
 
+		// ---- foe (public knowledge) ------------------------------------------
 		let foeView = [];
 		try {
-			const foe = battle.foe || (battle.sides && battle.sides.find(
-				s => s && s !== battle.mySide));
+			const foe = battle.foe;
 			if (foe && foe.active) {
 				foeView = [{
 					name: foe.name || '',
 					species: String(foe.speciesForme || foe.species || '')
 						.replace(/[^a-zA-Z0-9]/g, ''),
 					level: foe.level || 100,
-					types: (foe.getTypes && foe.getTypes()) || foe.types || [],
+					types: (foe.getTypes && foe.getTypes()) || [],
 					hpRatio: foe.maxhp ? (foe.hp || 0) / foe.maxhp : 1,
-					status: (foe.statusData && foe.statusData.id) || foe.status || '',
+					status: (foe.statusData && foe.statusData.id) || '',
 					moves: (foe.moveTrack || []).map(m => m[0]),
 					item: foe.item || '',
 					ability: foe.ability || '',
 					terastallized: !!foe.terastallized,
 				}];
 			}
-		} catch (e) { /* foe view best-effort */ }
+		} catch (e) { /* best-effort */ }
 
+		// ---- our side: prefer the REQUEST's exact ServerPokemon[] -------------
 		let myPokemon = [];
 		try {
-			myPokemon = ((battle.mySide && battle.mySide.pokemon) || []).map((mon, i) => ({
+			const list = (request && request.side && request.side.pokemon) ||
+				battle.myPokemon || [];
+			myPokemon = list.map((mon, i) => ({
 				slot: i + 1,
-				ident: mon.ident || `p1${String.fromCharCode(97 + i)}: ${mon.speciesForme || ''}`,
+				ident: mon.ident || mon.speciesForme || `slot${i + 1}`,
 				details: mon.details || mon.speciesForme || '',
 				condition: hpText(mon),
 				fainted: !mon.hp,
@@ -108,25 +102,59 @@
 				moves: mon.moves || [],
 				item: mon.item || '',
 				ability: mon.ability || '',
-				reviving: false,
+				reviving: !!mon.reviving,
 			}));
-		} catch (e) { /* own team best-effort */ }
+		} catch (e) { /* best-effort */ }
 
 		return {
 			connected: true,
 			hasRequest: !!request,
-			reason: request ? '' : 'battle found, waiting for a decision point',
-			battleId: battle.roomid || '',
-			nickname: battle.nickname || '',
-			myId: (battle.mySide && battle.mySide.id) || 'p1',
+			requestType: request ? request.requestType : '',
+			rqid: request ? request.rqid : 0,
+			reason: request ? '' : 'battle found · no decision point yet',
+			battleId: battle.roomid || room.id || '',
 			turn: battle.turn || 0,
+			myId: (request && request.side && request.side.id) ||
+			      (battle.mySide && battle.mySide.id) || 'p1',
 			request,
 			foeView,
 			myPokemon,
 		};
 	};
 
-	// ---- postMessage command loop -------------------------------------------
+	// ---- sending choices through the client's OWN path ------------------------
+	BRIDGE.sendChoice = function (choice) {
+		const room = findBattleRoom();
+		if (!room) return { ok: false, error: 'no battle room' };
+		if (typeof choice !== 'string' || !/^[\w ,:-]+$/.test(choice)) {
+			return { ok: false, error: 'invalid choice string' };
+		}
+		if (!room.request) return { ok: false, error: 'no pending request' };
+		try {
+			// Identical to what the UI does when you click a move button:
+			// panel-chat.tsx -> this.sendDirect(`/choose ${choices.toString()}`)
+			room.sendDirect(`/choose ${choice}`);
+			return { ok: true };
+		} catch (e) {
+			return { ok: false, error: String(e && e.message) };
+		}
+	};
+
+	BRIDGE.debugState = function () {
+		const room = findBattleRoom();
+		if (!room) return { found: false };
+		return {
+			found: true,
+			roomId: room.id,
+			hasRequest: !!room.request,
+			requestType: room.request ? room.request.requestType : null,
+			hasChoices: !!room.choices,
+			battleTurn: room.battle && room.battle.turn,
+			battleEnded: room.battle && room.battle.ended,
+		};
+	};
+
+	// ---- postMessage command loop ----------------------------------------------
 	window.addEventListener('message', ev => {
 		if (ev.source !== window) return;
 		const msg = ev.data;
@@ -140,21 +168,23 @@
 				reqId: msg.reqId,
 				payload: JSON.stringify(snap),
 			}, window.location.origin);
-		} else if (msg.type === 'chooseMove' && typeof msg.slot === 'number') {
-			clickControl('[data-move]', msg.slot);
-		} else if (msg.type === 'chooseSwitch' && typeof msg.slot === 'number') {
-			clickControl('[data-switch]', msg.slot);
+		} else if (msg.type === 'sendChoice') {
+			const res = BRIDGE.sendChoice(String(msg.choice || ''));
+			window.postMessage({
+				source: SRC_PAGE,
+				type: 'choiceResult',
+				reqId: msg.reqId,
+				payload: JSON.stringify(res),
+			}, window.location.origin);
+		} else if (msg.type === 'debug') {
+			window.postMessage({
+				source: SRC_PAGE,
+				type: 'debugResult',
+				reqId: msg.reqId,
+				payload: JSON.stringify(BRIDGE.debugState()),
+			}, window.location.origin);
 		}
 	});
 
-	function clickControl(selector, slot) {
-		try {
-			const buttons = [...document.querySelectorAll(
-				`.battle-controls button${selector}`)];
-			const btn = buttons[slot - 1];
-			if (btn && !btn.disabled) btn.click();
-		} catch (e) { /* controls not present */ }
-	}
-
-	console.info('[PSAB] bridge v2 ready');
+	console.info('[PSAB] bridge v3 ready');
 })();

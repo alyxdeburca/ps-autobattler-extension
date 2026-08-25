@@ -1,9 +1,9 @@
 /**
  * content-main.js -- isolated world content script (headless brain).
  *
- * Talks to the MAIN-world bridge via window.postMessage (JSON payloads;
- * objects don't survive cross-world CustomEvent.detail reliably).
- * Exposes status over chrome.runtime messaging for the toolbar popup.
+ * v3: consumes room.request snapshots (exact own team + move availability),
+ * decides via the ps-autobattler decision core, and sends choices through
+ * the client's own sendDirect("/choose ...") path when autoplay is on.
  */
 'use strict';
 
@@ -12,48 +12,45 @@ const trackerMod = require('../../vendor/ps-autobattler/src/battle-state');
 const { BattleTracker } = trackerMod;
 
 // ---------------------------------------------------------------------------
-// Bridge communication (postMessage to MAIN world)
+// postMessage bridge
 // ---------------------------------------------------------------------------
 const SRC_CONTENT = 'psab-content';
 let msgReqId = 0;
-const pending = new Map(); // reqId -> resolve
+const pending = new Map();
 
 window.addEventListener('message', ev => {
 	if (ev.source !== window) return;
 	const msg = ev.data;
 	if (!msg || msg.source !== 'psab-page') return;
-	if (msg.type === 'snapshot' && pending.has(msg.reqId)) {
+	if ((msg.type === 'snapshot' || msg.type === 'choiceResult') &&
+		pending.has(msg.reqId)) {
 		const resolve = pending.get(msg.reqId);
 		pending.delete(msg.reqId);
 		try {
 			resolve(JSON.parse(msg.payload));
 		} catch (e) {
-			resolve({ connected: false, reason: 'bad snapshot payload' });
+			resolve(null);
 		}
 	}
 });
 
-function requestSnapshot(timeoutMs = 800) {
+function callBridge(type, extra = {}, timeoutMs = 800) {
 	return new Promise(resolve => {
 		const reqId = ++msgReqId;
 		pending.set(reqId, resolve);
-		window.postMessage({ source: SRC_CONTENT, type: 'getSnapshot', reqId },
+		window.postMessage({ source: SRC_CONTENT, type, reqId, ...extra },
 			window.location.origin);
 		setTimeout(() => {
 			if (pending.has(reqId)) {
 				pending.delete(reqId);
-				resolve(null); // bridge absent entirely
+				resolve(null);
 			}
 		}, timeoutMs);
 	});
 }
 
-function sendCommand(detail) {
-	window.postMessage({ source: SRC_CONTENT, ...detail }, window.location.origin);
-}
-
 // ---------------------------------------------------------------------------
-// Decision loop (silent)
+// Decision loop
 // ---------------------------------------------------------------------------
 const tracker = new BattleTracker('p1');
 let lastRequestHash = '';
@@ -61,83 +58,122 @@ let auto = false;
 let loopBusy = false;
 
 const status = {
-	state: 'starting',    // starting | nobattle | waiting | ready | error
+	state: 'starting',
 	reason: 'starting…',
+	battleId: '',
 	turn: 0,
+	requestType: '',
 	choice: '',
 	candidates: [],
 	best: null,
 	auto: false,
+	errors: [],
 	updatedAt: 0,
 };
 
-function hashRequest(req) {
-	return JSON.stringify(req && req.side ? req.side.pokemon.map(p => p.ident + p.condition) : '') +
-		'|' + JSON.stringify(req ? (req.active || req.forceSwitch || '').toString().slice(0, 200) : '');
+function requestHash(req) {
+	try {
+		return JSON.stringify({
+			rqid: req.rqid,
+			type: req.requestType,
+			team: (req.side && req.side.pokemon || []).map(p =>
+				`${p.ident}|${p.condition}`),
+			active: (req.active || []).map(a => a &&
+				a.moves.map(m => `${m.id}:${m.pp}:${!!m.disabled}`).join(',')),
+		});
+	} catch (e) {
+		return String(Date.now());
+	}
+}
+
+/** Adapt the client's BattleRequest to the shape decision-core expects. */
+function adaptRequest(request) {
+	const req = {
+		wait: request.requestType === 'wait' || undefined,
+		teamPreview: request.requestType === 'team' || undefined,
+		forceSwitch: request.requestType === 'switch'
+			? request.forceSwitch : undefined,
+		active: request.requestType === 'move'
+			? request.active : undefined,
+		side: request.side,
+	};
+	return req;
 }
 
 async function decideOnce(snap) {
-	tracker.seeRequest(snap.request);
+	const request = snap.request;
+	tracker.seeRequest(adaptRequest(request));
+
+	// Foe knowledge from the client's tracked public state.
 	for (const fv of snap.foeView) {
 		if (!fv.species) continue;
 		const ident = `p2a: ${fv.name || fv.species}`;
 		tracker.seeLine(`|switch|${ident}|${fv.species}, L${fv.level}|100/100`);
-		if (fv.moves) for (const m of fv.moves) tracker.seeLine(`|move|${ident}|${m}`);
+		for (const m of fv.moves || []) tracker.seeLine(`|move|${ident}|${m}`);
 		if (fv.status) tracker.seeLine(`|-status|${ident}|${fv.status}`);
 		if (fv.ability) tracker.seeLine(`|-ability|${ident}|${fv.ability}`);
 		if (fv.item) tracker.seeLine(`|-item|${ident}|${fv.item}`);
 	}
 	tracker.turn = snap.turn;
 
-	const req = snap.request;
-	if (req.teamPreview) return { choice: 'default', candidates: [] };
-	if (req.forceSwitch) {
-		const choice = core.decideForceSwitch(tracker, req);
+	if (request.requestType === 'team') {
+		return { choice: 'default', candidates: [] };
+	}
+	if (request.requestType === 'switch') {
+		const choice = core.decideForceSwitch(tracker,
+			{ forceSwitch: request.forceSwitch, side: request.side });
 		return { choice, candidates: [{ kind: 'switch', name: choice }] };
 	}
-	if (req.active) return core.decideMove(tracker, req);
-	return { choice: 'default', candidates: [] };
-}
-
-async function act(choice) {
-	const [kind, slotStr] = choice.split(' ');
-	const slot = parseInt(slotStr, 10);
-	if (kind === 'move' && Number.isFinite(slot)) sendCommand({ type: 'chooseMove', slot });
-	else if (kind === 'switch' && Number.isFinite(slot)) sendCommand({ type: 'chooseSwitch', slot });
+	if (request.requestType === 'move') {
+		return core.decideMove(tracker, adaptRequest(request));
+	}
+	return { choice: '', candidates: [] };
 }
 
 setInterval(async () => {
 	if (loopBusy) return;
 	loopBusy = true;
 	try {
-		const snap = await requestSnapshot();
+		const snap = await callBridge('getSnapshot');
 		if (!snap) {
 			status.state = 'nobattle';
-			status.reason = 'no active battle on this tab';
+			status.reason = 'bridge not responding — reload the Showdown tab';
 			return;
 		}
 		if (!snap.connected) {
 			status.state = 'nobattle';
 			status.reason = snap.reason || 'no active battle on this tab';
+			status.battleId = '';
 			return;
 		}
+		status.battleId = snap.battleId;
 		status.turn = snap.turn;
-		if (!snap.hasRequest || !snap.request) {
+		status.requestType = snap.requestType || '';
+
+		if (!snap.hasRequest) {
 			status.state = 'waiting';
-			status.reason = `battle found · turn ${snap.turn} · waiting for your decision point`;
+			status.reason = snap.reason || 'battle found · waiting for a decision point';
 			return;
 		}
-		const h = hashRequest(snap.request);
+		const h = requestHash(snap.request);
 		if (h !== lastRequestHash) {
 			lastRequestHash = h;
 			const { choice, candidates, best } = await decideOnce(snap);
 			Object.assign(status, {
-				state: 'ready', reason: '', choice, candidates, best,
-				auto, updatedAt: Date.now(),
+				state: choice ? 'ready' : 'waiting',
+				reason: choice ? '' : 'no legal action found for this request',
+				choice, candidates, best, auto, updatedAt: Date.now(),
 			});
-			if (auto && choice && choice !== 'default') await act(choice);
-			else if (auto && choice === 'default') sendCommand({ type: 'chooseMove', slot: 1 });
-		} else {
+			if (auto && choice && choice !== 'default') {
+				const res = await callBridge('sendChoice', { choice }, 1500);
+				if (!res || !res.ok) {
+					status.errors.push(`send failed: ${res && res.error}`);
+					if (status.errors.length > 20) status.errors.shift();
+				}
+			} else if (auto && choice === 'default') {
+				await callBridge('sendChoice', { choice: 'default' }, 1500);
+			}
+		} else if (status.state !== 'ready') {
 			status.state = 'ready';
 		}
 	} catch (e) {
@@ -163,4 +199,4 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 	}
 });
 
-console.info('[PSAB] headless brain ready (postMessage)');
+console.info('[PSAB] brain v3 ready');
