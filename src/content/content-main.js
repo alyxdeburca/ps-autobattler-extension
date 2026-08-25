@@ -18,6 +18,7 @@ const { BattleTracker } = trackerMod;
 const minidex = require('../data/minidex');
 dexShim.setBackend(minidex);
 est.setCalcEngine(require('../calc/smogon-calc').expectedDamagePct);
+const overlay = require('./overlay');
 
 // ---------------------------------------------------------------------------
 // postMessage bridge
@@ -189,12 +190,18 @@ setInterval(async () => {
 		status.reason = `error: ${e.message}`;
 	} finally {
 		loopBusy = false;
+		updateOverlay(status);
 	}
 }, 700);
 
 // ---------------------------------------------------------------------------
-// Popup messaging API
+// Overlay tab + popup messaging API
 // ---------------------------------------------------------------------------
+const updateOverlay = overlay.mount(v => {
+	auto = v;
+	status.auto = auto;
+});
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 	if (!msg || !msg.type) return;
 	if (msg.type === 'psab-get-status') {

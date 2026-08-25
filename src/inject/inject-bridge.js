@@ -66,23 +66,28 @@
 		}
 
 		// ---- foe (public knowledge) ------------------------------------------
+		// NOTE: Side.active is an ARRAY (battle.ts line ~659); the active
+		// Pokemon objects live in it -- reading the Side itself yields player
+		// metadata (which produced ghost foes / zero damage before).
 		let foeView = [];
 		try {
-			const foe = battle.foe;
-			if (foe && foe.active) {
-				foeView = [{
-					name: foe.name || '',
-					species: String(foe.speciesForme || foe.species || '')
+			const side = battle.foe;
+			const actives = side && Array.isArray(side.active) ? side.active : [];
+			for (const mon of actives) {
+				if (!mon) continue;
+				foeView.push({
+					name: mon.name || '',
+					species: String(mon.speciesForme || mon.species || '')
 						.replace(/[^a-zA-Z0-9]/g, ''),
-					level: foe.level || 100,
-					types: (foe.getTypes && foe.getTypes()) || [],
-					hpRatio: foe.maxhp ? (foe.hp || 0) / foe.maxhp : 1,
-					status: (foe.statusData && foe.statusData.id) || '',
-					moves: (foe.moveTrack || []).map(m => m[0]),
-					item: foe.item || '',
-					ability: foe.ability || '',
-					terastallized: !!foe.terastallized,
-				}];
+					level: mon.level || 100,
+					types: (mon.getTypes && mon.getTypes()) || [],
+					hpRatio: mon.maxhp ? (mon.hp || 0) / mon.maxhp : 1,
+					status: mon.status || '',
+					moves: (mon.moveTrack || []).map(m => m[0]),
+					item: mon.item || '',
+					ability: mon.ability || '',
+					terastallized: !!mon.terastallized,
+				});
 			}
 		} catch (e) { /* best-effort */ }
 

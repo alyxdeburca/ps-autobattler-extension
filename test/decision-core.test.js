@@ -116,4 +116,51 @@ ok('decision-core: switch candidate present & scored', () => {
 	assert.ok(typeof sw.score === 'number' && Number.isFinite(sw.score));
 });
 
+// ---------------------------------------------------------------------------
+// Anti-dithering: flip-back penalty + switch margin
+// ---------------------------------------------------------------------------
+ok('decision-core: penalizes flipping back to a recent slot', () => {
+	const mkRequest = () => ({
+		active: [{
+			moves: [
+				{ move: 'Body Slam', id: 'bodyslam', pp: 24, maxpp: 24, disabled: false },
+			],
+			trapped: false,
+		}],
+		side: {
+			id: 'p1',
+			pokemon: [
+				{
+					ident: 'p1a: MonA', details: 'MonA, L80', condition: '200/200',
+					active: true,
+					stats: { atk: 150, def: 120, spa: 100, spd: 100, spe: 110 },
+					moves: ['bodyslam'], item: '',
+				},
+				{
+					ident: 'p1b: TwinB', details: 'TwinB, L80', condition: '200/200',
+					active: false,
+					stats: { atk: 150, def: 120, spa: 100, spd: 100, spe: 110 },
+					moves: ['bodyslam'], item: '',
+				},
+				{
+					ident: 'p1c: TwinC', details: 'TwinC, L80', condition: '200/200',
+					active: false,
+					stats: { atk: 150, def: 120, spa: 100, spd: 100, spe: 110 },
+					moves: ['bodyslam'], item: '',
+				},
+			],
+		},
+	});
+	const tracker = new trackerMod.BattleTracker('p1');
+	tracker.seeLine('|switch|p2a: Blissey|Blissey, L80|600/600');
+	tracker.turn = 5;
+	// Simulate having just switched AWAY from slot 2 this same exchange.
+	tracker._aiMem = { switchHistory: [{ from: 2, to: 1, turn: 4 }] };
+	const { candidates } = core.decideMove(tracker, mkRequest());
+	const sw2 = candidates.find(c => c.kind === 'switch' && c.slot === 2);
+	const sw3 = candidates.find(c => c.kind === 'switch' && c.slot === 3);
+	assert.ok(sw2 && sw3 && sw3.score > sw2.score,
+		`identical twins: slot3 (${sw3 && sw3.score}) must outrank flipped slot2 (${sw2 && sw2.score})`);
+});
+
 console.log(`\n${passed} checks passed${process.exitCode ? ' (with failures)' : ''}`);
