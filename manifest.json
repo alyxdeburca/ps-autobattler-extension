@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "PS Auto-Battler",
+  "version": "0.1.0",
+  "description": "Heuristic battle advisor & autoplay for Pokemon Showdown, powered by ps-autobattler.",
+  "permissions": [],
+  "content_scripts": [
+    {
+      "matches": ["https://play.pokemonshowdown.com/*", "https://*.pokemonshowdown.com/*"],
+      "js": ["dist/inject-bridge.js"],
+      "world": "MAIN",
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://play.pokemonshowdown.com/*", "https://*.pokemonshowdown.com/*"],
+      "css": ["src/content/overlay.css"],
+      "js": ["dist/content-main.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["dist/inject-bridge.js"],
+      "matches": ["https://play.pokemonshowdown.com/*", "https://*.pokemonshowdown.com/*"]
+    }
+  ]
+}

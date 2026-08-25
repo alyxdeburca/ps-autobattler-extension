@@ -1,0 +1,3 @@
+[submodule "vendor/ps-autobattler"]
+	path = vendor/ps-autobattler
+	url = https://github.com/alyxdeburca/ps-autobattler

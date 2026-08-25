@@ -1,0 +1,30 @@
+#psab-panel {
+  position: fixed;
+  right: 12px;
+  top: 64px;
+  z-index: 99999;
+  width: 240px;
+  background: rgba(24, 28, 34, 0.94);
+  color: #e8eaed;
+  border: 1px solid #3c4048;
+  border-radius: 10px;
+  font: 13px/1.45 system-ui, sans-serif;
+  box-shadow: 0 6px 20px rgba(0,0,0,.35);
+  padding: 10px 12px;
+}
+#psab-panel .psab-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 6px;
+}
+#psab-panel .psab-title { font-weight: 700; letter-spacing: .2px; }
+#psab-panel .psab-auto { font-size: 12px; color: #9aa0a6; user-select: none; }
+#psab-panel .psab-list { margin: 0; padding-left: 18px; }
+#psab-panel .psab-item {
+  display: flex; justify-content: space-between; gap: 8px;
+  padding: 2px 0; color: #dadce0;
+}
+#psab-panel .psab-item.psab-best { color: #8ab4f8; font-weight: 700; }
+#psab-panel .psab-foot {
+  margin-top: 6px; font-size: 11px; color: #9aa0a6;
+  border-top: 1px solid #3c4048; padding-top: 4px;
+}

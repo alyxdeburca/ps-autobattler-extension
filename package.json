@@ -1,0 +1,15 @@
+{
+  "name": "ps-autobattler-extension",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chrome extension (MV3): live battle advisor & autoplay for Pokemon Showdown using ps-autobattler",
+  "scripts": {
+    "build": "mkdir -p dist && cp src/inject/inject-bridge.js dist/ && node esbuild.config.js",
+    "watch": "npm run build && node esbuild.config.js --watch",
+    "test": "node test/decision-core.test.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  },
+  "license": "MIT"
+}
