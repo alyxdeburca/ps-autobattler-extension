@@ -22,8 +22,8 @@ const options = {
 	bundle: true,
 	format: 'iife',
 	target: 'chrome120',
-	minify: false,
-	sourcemap: 'inline',
+	minify: !process.argv.includes('--dev'),
+	sourcemap: process.argv.includes('--dev') ? 'inline' : false,
 	logLevel: 'info',
 	// decision-core's dex-shim guards `process` behind typeof checks, but the
 	// Node branch still references require('pokemon-showdown/...'); shim it out.

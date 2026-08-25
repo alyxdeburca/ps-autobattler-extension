@@ -15,8 +15,12 @@ const minidex = require('../src/data/minidex');
 const { setBackend } = require('../vendor/ps-autobattler/src/dex-shim');
 const core = require('../vendor/ps-autobattler/src/decision-core');
 const trackerMod = require('../vendor/ps-autobattler/src/battle-state');
+const est = require('../vendor/ps-autobattler/src/estimator');
 
 setBackend(minidex);
+// Production parity: same calc engine the content script wires in.
+const smogon = require('../src/calc/smogon-calc').expectedDamagePct;
+est.setCalcEngine(smogon);
 
 // ---------------------------------------------------------------------------
 // MiniDex sanity (mirrors ps-autobattler's estimator tests)
@@ -38,6 +42,20 @@ ok('minidex: species lookup + types', () => {
 
 ok('minidex: immunity Normal vs Ghost', () => {
 	assert.strictEqual(minidex.getImmunity('Normal', ['Ghost', 'Poison']), false);
+});
+
+ok('smogon-calc: engine returns sane damage', () => {
+	const dexShim = require('../vendor/ps-autobattler/src/dex-shim');
+	const mv = dexShim.moveFromId('earthquake');
+	const pct = smogon({
+		attacker: { species: 'garchomp', level: 81, types: ['Dragon', 'Ground'], status: '' },
+		defender: { types: ['Ghost', 'Poison'], level: 78, hpRatio: 1 },
+		move: mv,
+		attackerStats: { hp: 253, atk: 182, def: 131, spa: 105, spd: 111, spe: 169 },
+		defenderSpecies: dexShim.speciesFromId('gengar'),
+	});
+	assert.ok(Number.isFinite(pct) && pct > 100,
+		`expected OHKO-range %, got ${pct}`);
 });
 
 // ---------------------------------------------------------------------------

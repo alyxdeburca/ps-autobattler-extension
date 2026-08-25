@@ -9,7 +9,15 @@
 
 const core = require('../../vendor/ps-autobattler/src/decision-core');
 const trackerMod = require('../../vendor/ps-autobattler/src/battle-state');
+const dexShim = require('../../vendor/ps-autobattler/src/dex-shim');
+const est = require('../../vendor/ps-autobattler/src/estimator');
 const { BattleTracker } = trackerMod;
+
+// --- backend wiring (THE critical piece: without this, dex lookups throw
+//     in the browser and every decision silently fails) -------------------
+const minidex = require('../data/minidex');
+dexShim.setBackend(minidex);
+est.setCalcEngine(require('../calc/smogon-calc').expectedDamagePct);
 
 // ---------------------------------------------------------------------------
 // postMessage bridge

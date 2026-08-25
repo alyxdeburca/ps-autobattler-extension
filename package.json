@@ -11,5 +11,8 @@
   "devDependencies": {
     "esbuild": "^0.25.0"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "@smogon/calc": "^0.11.0"
+  }
 }
