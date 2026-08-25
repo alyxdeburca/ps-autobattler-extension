@@ -40,7 +40,7 @@ function compact(entry, keys) {
 
 const SPECIES_KEYS = ['name', 'types', 'baseStats'];
 const MOVE_KEYS = ['name', 'type', 'category', 'basePower', 'accuracy',
-	'multihit', 'ohko', 'damage', 'secondary', 'shortDesc'];
+	'multihit', 'ohko', 'damage', 'secondary', 'shortDesc', 'boosts'];
 
 const species = {};
 for (const sp of dex.species.all()) {
