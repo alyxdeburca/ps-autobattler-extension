@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PS Auto-Battler",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Heuristic battle advisor & autoplay for Pokemon Showdown, powered by ps-autobattler.",
   "permissions": ["activeTab"],
   "action": {
