@@ -97,16 +97,23 @@
 		} catch (e) { /* best-effort */ }
 
 		// FALLBACK: some client states leave side.active empty at request
-		// time -- recover species identity from the client's own protocol log
-		// (battle.log holds the raw lines; scan backwards for the last foe
-		// switch-in). Blind play is what produced the status-spam epidemic.
+		// time -- recover species identity from the client's own protocol
+		// log. IMPORTANT: the foe is whichever side we are NOT; hardcoding
+		// p2 made us scout ourselves when playing as p2 (v0.2.2 bug).
 		if (!foeView.length && Array.isArray(battle.log)) {
 			try {
+				const myId = (battle.mySide && battle.mySide.id) ||
+					(request && request.side && request.side.id) || 'p1';
+				const foeId = myId === 'p1' ? 'p1' : 'p2';
+				if (myId === 'p2') foeId === 'p1'; // clarity: foe = the other one
+				const oppId = myId === 'p1' ? 'p2' : 'p1';
+				void foeId;
 				for (let i = battle.log.length - 1; i >= 0; i--) {
-					const m = /\|switch\|p2[a-z]?:[^|]+\|([A-Za-z0-9-]+)/
-						.exec(battle.log[i]);
+					const re = new RegExp(
+						`\\|switch\\|${oppId}[a-z]?:[^|]+\\|([A-Za-z0-9-]+)`);
+					const m = re.exec(battle.log[i]);
 					if (m && m[1]) {
-						foeSource = 'battle.log';
+						foeSource = `battle.log(${oppId})`;
 						foeView.push({
 							name: m[1],
 							species: m[1].replace(/[^a-zA-Z0-9]/g, ''),
