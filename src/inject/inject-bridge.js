@@ -112,6 +112,18 @@
 			}));
 		} catch (e) { /* best-effort */ }
 
+		// ---- foe side conditions (hazards) ------------------------------------
+		let foeHazards = false;
+		try {
+			const foeSide = battle.foe;
+			const sc = foeSide && foeSide.sideConditions;
+			if (sc) {
+				for (const key of ['stealthrock', 'spikes', 'toxicspikes', 'stickyweb']) {
+					if (sc[key]) { foeHazards = true; break; }
+				}
+			}
+		} catch (e) { /* best-effort */ }
+
 		return {
 			connected: true,
 			hasRequest: !!request,
@@ -124,6 +136,7 @@
 			      (battle.mySide && battle.mySide.id) || 'p1',
 			request,
 			foeView,
+			foeHazards,
 			myPokemon,
 		};
 	};

@@ -130,6 +130,13 @@ async function decideOnce(snap) {
 			.find(p => p.active);
 		return (act && act.boosts) || {};
 	})();
+	// Hazards on the foe's side (client tracks them; also fed via -sidestart).
+	tracker._foeHazards = (() => {
+		try {
+			const room = null; // bridge packs it into snapshot below
+			return snap.foeHazards || tracker._foeHazards || false;
+		} catch (e) { return false; }
+	})();
 
 	if (request.requestType === 'team') {
 		return { choice: 'default', candidates: [] };
