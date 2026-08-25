@@ -36,10 +36,10 @@ function fetchText(url) {
 function normalizeId(input) {
 	let s = String(input).trim();
 	if (s.startsWith('/') || s.startsWith('./')) return s; // local log file
+	// Replay ids already include the format ("gen9randombattle-123456");
+	// just strip scheme/host/extension/query.
 	s = s.replace(/^https?:\/\/[^/]+\//, '').replace(/\.log$/, '').replace(/\.json$/, '');
-	s = s.split('?')[0].split('#')[0];
-	if (!s.startsWith('battle-')) s = `battle-${s}`;
-	return s;
+	return s.split('?')[0].split('#')[0];
 }
 
 function analyze(logText, label) {
@@ -65,7 +65,7 @@ function analyze(logText, label) {
 	// "|move|p1a: Foo|Fake Out" into chat, cmd === 'c'/'chat' and it never
 	// reaches a case below. Split lines are resolved to their public half.
 	const PARSED = new Set(['player', 'turn', 'win', 'switch', 'drag', 'move',
-		'-damage', '-faint', '-terastallize']);
+		'-damage', 'faint', '-terastallize']);
 
 	for (let li = 0; li < lines.length; li++) {
 		if (!lines[li].startsWith('|')) continue;
@@ -100,10 +100,14 @@ function analyze(logText, label) {
 			break;
 		}
 		case '-damage': {
-			const [, ident, cond] = parts;
+			const [, ident, cond, ...rest] = parts;
 			const prev = hp[ident] || { cur: null };
 			const next = parseCond(cond);
 			hp[ident] = next;
+			const cause = rest.join('|');
+			// Attribute only direct hit damage; passive sources (weather/
+			// burn/poison/recoil/drain) aren't the opponent's doing.
+			if (/^\[from\]/.test(cause)) break;
 			if (prev.cur != null && next.cur != null && next.cur < prev.cur) {
 				const victimSide = ident.slice(0, 2);
 				const dealerSide = victimSide === 'p1' ? 'p2' : 'p1';
@@ -115,7 +119,7 @@ function analyze(logText, label) {
 			}
 			break;
 		}
-		case '-faint': {
+		case 'faint': {
 			const ident = parts[1];
 			const victimSide = ident.slice(0, 2);
 			players[victimSide === 'p1' ? 'p2' : 'p1'].koScored++;

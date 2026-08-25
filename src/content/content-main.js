@@ -124,6 +124,12 @@ async function decideOnce(snap) {
 		if (fv.item) tracker.seeLine(`|-item|${ident}|${fv.item}`);
 	}
 	tracker.turn = snap.turn;
+	tracker._foeBoosts = (snap.foeView[0] && snap.foeView[0].boosts) || {};
+	tracker._selfBoosts = (() => {
+		const act = (snap.request.side && snap.request.side.pokemon || [])
+			.find(p => p.active);
+		return (act && act.boosts) || {};
+	})();
 
 	if (request.requestType === 'team') {
 		return { choice: 'default', candidates: [] };

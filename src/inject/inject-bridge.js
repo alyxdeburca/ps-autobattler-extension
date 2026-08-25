@@ -87,6 +87,7 @@
 					item: mon.item || '',
 					ability: mon.ability || '',
 					terastallized: !!mon.terastallized,
+					boosts: { ...(mon.boosts || {}) },
 				});
 			}
 		} catch (e) { /* best-effort */ }

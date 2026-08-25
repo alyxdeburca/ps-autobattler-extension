@@ -41,6 +41,10 @@ function makePokemon(speciesId, level, opts = {}) {
 			? { teraType: opts.teraType, terastallized: true }
 			: {}),
 	});
+	// Live stat stages (Calm Mind etc.) -- applied via boostBy.
+	if (opts.boosts && typeof p.boostBy === 'function') {
+		p.boostBy(opts.boosts);
+	}
 	return p;
 }
 
@@ -60,6 +64,7 @@ function expectedDamagePct({ attacker, defender, move, attackerStats, defenderSp
 			item: attacker && attacker.item,
 			ability: attacker && attacker.ability,
 			teraType: attacker && attacker.willTera ? attacker.teraType : '',
+			boosts: attacker && attacker.boosts,
 		});
 
 	// Exact own-team stats straight from the client request.
